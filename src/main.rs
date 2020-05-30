@@ -91,6 +91,7 @@ fn cli_init() -> Result<KtrlArgs, std::io::Error> {
         kbd_path: kbd_path.to_path_buf(),
         config_path: config_path.to_path_buf(),
         assets_path: assets_path.to_path_buf(),
+        // Open IPC based on device path that we can then send commands to
     })
 }
 
