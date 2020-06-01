@@ -16,6 +16,9 @@ use crate::layers::LayersManager;
 use crate::KbdIn;
 use crate::KbdOut;
 
+use std::thread;
+use std::sync::mpsc;
+
 #[cfg(feature = "sound")]
 use crate::effects::Dj;
 
@@ -26,7 +29,8 @@ pub struct KtrlArgs {
 }
 
 pub struct Ktrl {
-    pub kbd_in: KbdIn,
+    // pub kbd_in: KbdIn,
+    pub kbd_in_path: PathBuf,
     pub kbd_out: KbdOut,
     pub l_mgr: LayersManager,
     pub th_mgr: TapHoldMgr,
@@ -39,13 +43,13 @@ pub struct Ktrl {
 
 impl Ktrl {
     pub fn new(args: KtrlArgs) -> Result<Self, std::io::Error> {
-        let kbd_in = match KbdIn::new(&args.kbd_path) {
-            Ok(kbd_in) => kbd_in,
-            Err(err) => {
-                error!("Failed to open the input keyboard device. Make sure you've added ktrl to the `input` group");
-                return Err(err);
-            }
-        };
+        // let kbd_in = match KbdIn::new(&args.kbd_path) {
+        //     Ok(kbd_in) => kbd_in,
+        //     Err(err) => {
+        //         error!("Failed to open the input keyboard device. Make sure you've added ktrl to the `input` group");
+        //         return Err(err);
+        //     }
+        // };
 
         let kbd_out = match KbdOut::new() {
             Ok(kbd_out) => kbd_out,
@@ -68,7 +72,7 @@ impl Ktrl {
         let dj = Dj::new(&args.assets_path);
 
         Ok(Self {
-            kbd_in,
+            kbd_in_path: args.kbd_path,
             kbd_out,
             l_mgr,
             th_mgr,
@@ -118,8 +122,19 @@ impl Ktrl {
     pub fn event_loop(&mut self) -> Result<(), std::io::Error> {
         info!("Ktrl: Entering the event loop");
 
+        let (tx, rx) = mpsc::channel();
+        let kbd_in_path = self.kbd_in_path.clone();
+        thread::spawn(move|| {
+            loop {
+                let kbd_in = KbdIn::new(&kbd_in_path).unwrap();
+                let in_event = kbd_in.read().unwrap();
+                tx.send(in_event).unwrap();
+            }
+        });
+
         loop {
-            let in_event = self.kbd_in.read()?;
+            let in_event = rx.recv().unwrap();
+            // let in_event = self.kbd_in.read()?;
 
             // Filter uninteresting events
             if in_event.event_type == EventType::EV_SYN || in_event.event_type == EventType::EV_MSC
