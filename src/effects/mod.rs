@@ -1,18 +1,22 @@
-mod sticky;
-mod dj;
-
 pub mod perform;
 pub use perform::perform_effect;
+
+mod sticky;
 pub use sticky::StickyState;
+
+#[cfg(feature = "sound")]
+mod dj;
+#[cfg(feature = "sound")]
 pub use dj::KSnd;
+#[cfg(feature = "sound")]
 pub use dj::Dj;
 
-use crate::keys::KeyValue;
+use crate::actions::Action;
 use crate::keys::KeyCode;
 use crate::keys::KeyEvent;
+use crate::keys::KeyValue;
 use crate::layers::LayerIndex;
 use crate::layers::LayersManager;
-use crate::actions::Action;
 use inner::inner;
 use serde::Deserialize;
 
@@ -24,17 +28,19 @@ pub enum Effect {
     KeySticky(KeyCode),
     KeySeq(Vec<KeyCode>),
 
-    Meh, // Ctrl+Alt+Shift
+    Meh,   // Ctrl+Alt+Shift
     Hyper, // Ctrl+Alt+Shift+Win
 
+    ToggleLayerAlias(String),
     ToggleLayer(LayerIndex),
     MomentaryLayer(LayerIndex),
 
+    #[cfg(feature = "sound")]
     Sound(KSnd),
+    #[cfg(feature = "sound")]
     SoundEx(String),
 
     Multi(Vec<Effect>),
-
     // Not Implemented Yet
     // ---------------------
     // OneShotLayer(LayerIndex),
@@ -46,7 +52,7 @@ pub fn key_event_to_fx_val(l_mgr: &LayersManager, event: &KeyEvent) -> EffectVal
     let merged = l_mgr.get(event.code);
     let effect = inner!(&merged.action, if Action::Tap).clone();
 
-    EffectValue{
+    EffectValue {
         fx: effect,
         val: event.value.into(),
     }
@@ -65,7 +71,7 @@ pub struct EffectValue {
 
 impl EffectValue {
     pub fn new(fx: Effect, val: KeyValue) -> Self {
-        Self{fx, val}
+        Self { fx, val }
     }
 }
 
@@ -79,14 +85,14 @@ impl OutEffects {
     pub fn new(stop_processing: bool, effect: Effect, value: KeyValue) -> Self {
         OutEffects {
             stop_processing,
-            effects: Some(vec![EffectValue::new(effect, value)])
+            effects: Some(vec![EffectValue::new(effect, value)]),
         }
     }
 
     pub fn new_multiple(stop_processing: bool, effects: Vec<EffectValue>) -> Self {
         OutEffects {
             stop_processing,
-            effects: Some(effects)
+            effects: Some(effects),
         }
     }
 

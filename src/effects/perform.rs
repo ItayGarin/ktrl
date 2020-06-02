@@ -1,12 +1,14 @@
+use crate::effects::Effect;
+use crate::effects::EffectValue;
+use crate::kbd_out::KbdOut;
 use crate::keys::KeyCode;
 use crate::keys::KeyCode::*;
 use crate::keys::KeyValue;
-use crate::effects::Effect;
-use crate::effects::EffectValue;
-use crate::effects::KSnd;
-use crate::kbd_out::KbdOut;
-use crate::layers::LayerIndex;
 use crate::ktrl::Ktrl;
+use crate::layers::LayerIndex;
+
+#[cfg(feature = "sound")]
+use crate::effects::KSnd;
 
 use std::io::Error;
 use std::vec::Vec;
@@ -31,7 +33,11 @@ lazy_static::lazy_static! {
     };
 }
 
-fn perform_multiple_effects(ktrl: &mut Ktrl, effects: Vec<Effect>, value: KeyValue) -> Result<(), Error> {
+fn perform_multiple_effects(
+    ktrl: &mut Ktrl,
+    effects: Vec<Effect>,
+    value: KeyValue,
+) -> Result<(), Error> {
     for fx in effects {
         let sub_fx_val = EffectValue::new(fx.clone(), value);
         perform_effect(ktrl, sub_fx_val)?;
@@ -40,8 +46,12 @@ fn perform_multiple_effects(ktrl: &mut Ktrl, effects: Vec<Effect>, value: KeyVal
     Ok(())
 }
 
-
-fn perform_play_custom_sound(ktrl: &mut Ktrl, snd_path: String , value: KeyValue) -> Result<(), Error> {
+#[cfg(feature = "sound")]
+fn perform_play_custom_sound(
+    ktrl: &mut Ktrl,
+    snd_path: String,
+    value: KeyValue,
+) -> Result<(), Error> {
     if value == KeyValue::Press {
         ktrl.dj.play_custom(&snd_path)
     }
@@ -49,6 +59,7 @@ fn perform_play_custom_sound(ktrl: &mut Ktrl, snd_path: String , value: KeyValue
     Ok(())
 }
 
+#[cfg(feature = "sound")]
 fn perform_play_sound(ktrl: &mut Ktrl, snd: KSnd, value: KeyValue) -> Result<(), Error> {
     if value == KeyValue::Press {
         ktrl.dj.play(snd)
@@ -70,6 +81,14 @@ fn perform_momentary_layer(ktrl: &mut Ktrl, idx: LayerIndex, value: KeyValue) ->
 fn perform_toggle_layer(ktrl: &mut Ktrl, idx: LayerIndex, value: KeyValue) -> Result<(), Error> {
     if value == KeyValue::Press {
         ktrl.l_mgr.toggle_layer(idx)
+    }
+
+    Ok(())
+}
+
+fn perform_toggle_layer_alias(ktrl: &mut Ktrl, name: String, value: KeyValue) -> Result<(), Error> {
+    if value == KeyValue::Press {
+        ktrl.l_mgr.toggle_layer_alias(name)
     }
 
     Ok(())
@@ -110,9 +129,13 @@ pub fn perform_effect(ktrl: &mut Ktrl, fx_val: EffectValue) -> Result<(), Error>
         Effect::Meh => perform_keyseq(&mut ktrl.kbd_out, MEH.to_vec(), fx_val.val),
         Effect::Hyper => perform_keyseq(&mut ktrl.kbd_out, HYPER.to_vec(), fx_val.val),
         Effect::ToggleLayer(idx) => perform_toggle_layer(ktrl, idx, fx_val.val),
+        Effect::ToggleLayerAlias(name) => perform_toggle_layer_alias(ktrl, name, fx_val.val),
         Effect::MomentaryLayer(idx) => perform_momentary_layer(ktrl, idx, fx_val.val),
-        Effect::Sound(snd) => perform_play_sound(ktrl, snd, fx_val.val),
-        Effect::SoundEx(snd) => perform_play_custom_sound(ktrl, snd, fx_val.val),
         Effect::Multi(fxs) => perform_multiple_effects(ktrl, fxs, fx_val.val),
+
+        #[cfg(feature = "sound")]
+        Effect::Sound(snd) => perform_play_sound(ktrl, snd, fx_val.val),
+        #[cfg(feature = "sound")]
+        Effect::SoundEx(snd) => perform_play_custom_sound(ktrl, snd, fx_val.val),
     }
 }

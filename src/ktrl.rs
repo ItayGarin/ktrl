@@ -1,20 +1,25 @@
 use evdev_rs::enums::EventType;
-use log::{info, error};
+use log::{error, info};
 
 use std::convert::TryFrom;
-use std::path::PathBuf;
 use std::fs::read_to_string;
+use std::path::PathBuf;
 
-use crate::cfg;
-use crate::KbdIn;
-use crate::KbdOut;
-use crate::keys::KeyEvent;
-use crate::layers::LayersManager;
-use crate::actions::TapHoldMgr;
+use std::sync::Mutex;
+use std::sync::Arc;
+
 use crate::actions::TapDanceMgr;
+use crate::actions::TapHoldMgr;
+use crate::cfg;
 use crate::effects::key_event_to_fx_val;
 use crate::effects::perform_effect;
 use crate::effects::StickyState;
+use crate::keys::KeyEvent;
+use crate::layers::LayersManager;
+use crate::KbdIn;
+use crate::KbdOut;
+
+#[cfg(feature = "sound")]
 use crate::effects::Dj;
 
 pub struct KtrlArgs {
@@ -24,24 +29,19 @@ pub struct KtrlArgs {
 }
 
 pub struct Ktrl {
-    pub kbd_in: KbdIn,
+    pub kbd_in_path: PathBuf,
     pub kbd_out: KbdOut,
     pub l_mgr: LayersManager,
     pub th_mgr: TapHoldMgr,
     pub td_mgr: TapDanceMgr,
     pub sticky: StickyState,
+
+    #[cfg(feature = "sound")]
     pub dj: Dj,
 }
 
 impl Ktrl {
     pub fn new(args: KtrlArgs) -> Result<Self, std::io::Error> {
-        let kbd_in = match KbdIn::new(&args.kbd_path) {
-            Ok(kbd_in) => kbd_in,
-            Err(err) => {
-                error!("Failed to open the input keyboard device. Make sure you've added ktrl to the `input` group");
-                return Err(err);
-            }
-        };
 
         let kbd_out = match KbdOut::new() {
             Ok(kbd_out) => kbd_out,
@@ -53,15 +53,30 @@ impl Ktrl {
 
         let cfg_str = read_to_string(args.config_path)?;
         let cfg = cfg::parse(&cfg_str);
-        let mut l_mgr = LayersManager::new(&cfg.layers);
+        let mut l_mgr = LayersManager::new(&cfg.layers, &cfg.layer_aliases);
         l_mgr.init();
 
         let th_mgr = TapHoldMgr::new(cfg.tap_hold_wait_time);
         let td_mgr = TapDanceMgr::new(cfg.tap_dance_wait_time);
         let sticky = StickyState::new();
+
+        #[cfg(feature = "sound")]
         let dj = Dj::new(&args.assets_path);
 
-        Ok(Self{kbd_in, kbd_out, l_mgr, th_mgr, td_mgr, sticky, dj})
+        Ok(Self {
+            kbd_in_path: args.kbd_path,
+            kbd_out,
+            l_mgr,
+            th_mgr,
+            td_mgr,
+            sticky,
+            #[cfg(feature = "sound")]
+            dj,
+        })
+    }
+
+    pub fn new_arc(args: KtrlArgs) -> Result<Arc<Mutex<Self>>, std::io::Error> {
+        Ok(Arc::new(Mutex::new(Self::new(args)?)))
     }
 
     //
@@ -100,28 +115,44 @@ impl Ktrl {
         Ok(())
     }
 
-    pub fn event_loop(&mut self) -> Result<(), std::io::Error> {
+    pub fn event_loop(ktrl: Arc<Mutex<Self>>) -> Result<(), std::io::Error> {
         info!("Ktrl: Entering the event loop");
 
+        let kbd_in_path: PathBuf;
+        {
+            let ktrl = ktrl.lock().expect("Failed to lock ktrl (poisoned)");
+            kbd_in_path = ktrl.kbd_in_path.clone();
+        }
+
+        let kbd_in = match KbdIn::new(&kbd_in_path) {
+            Ok(kbd_in) => kbd_in,
+            Err(err) => {
+                error!("Failed to open the input keyboard device. Make sure you've added ktrl to the `input` group");
+                return Err(err);
+            }
+        };
+
         loop {
-            let in_event = self.kbd_in.read()?;
+            let in_event = kbd_in.read()?;
+            let mut ktrl = ktrl.lock().expect("Failed to lock ktrl (poisoned)");
 
             // Filter uninteresting events
-            if in_event.event_type == EventType::EV_SYN ||
-                in_event.event_type == EventType::EV_MSC {
+            if in_event.event_type == EventType::EV_SYN || in_event.event_type == EventType::EV_MSC
+            {
                 continue;
             }
 
             // Pass-through non-key events
             let key_event = match KeyEvent::try_from(in_event.clone()) {
                 Ok(ev) => ev,
-                _ =>  {
-                    self.kbd_out.write(in_event)?;
+                _ => {
+                    ktrl.kbd_out.write(in_event)?;
                     continue;
                 }
             };
 
-            self.handle_key_event(&key_event)?;
+            ktrl.handle_key_event(&key_event)?;
         }
     }
+
 }
