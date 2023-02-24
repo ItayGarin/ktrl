@@ -38,9 +38,17 @@ impl KbdOut {
         unsafe {
             uinput_sys::ui_set_evbit(uinput_out_file.as_raw_fd(), uinput_sys::EV_SYN);
             uinput_sys::ui_set_evbit(uinput_out_file.as_raw_fd(), uinput_sys::EV_KEY);
+            uinput_sys::ui_set_evbit(uinput_out_file.as_raw_fd(), uinput_sys::EV_REL);
+            uinput_sys::ui_set_evbit(uinput_out_file.as_raw_fd(), uinput_sys::EV_MSC);
 
             for key in 0..uinput_sys::KEY_MAX {
                 uinput_sys::ui_set_keybit(uinput_out_file.as_raw_fd(), key);
+            }
+            for key in 0..uinput_sys::REL_MAX {
+                uinput_sys::ui_set_relbit(uinput_out_file.as_raw_fd(), key);
+            }
+            for key in 0..uinput_sys::MSC_MAX {
+                uinput_sys::ui_set_mscbit(uinput_out_file.as_raw_fd(), key);
             }
 
             let mut uidev: uinput_user_dev = mem::zeroed();
