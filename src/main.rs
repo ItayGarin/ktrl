@@ -3,7 +3,7 @@ use log::info;
 use simplelog::*;
 use std::fs::File;
 use std::io::{Error, ErrorKind::*};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 mod actions;
 mod cfg;
@@ -41,7 +41,8 @@ fn cli_init() -> Result<KtrlArgs, std::io::Error> {
                 .short("d")
                 .long("device")
                 .value_name("DEVICE")
-                .help("Path to your keyboard's input device. Usually in /dev/input/")
+                .help("Path to your keyboard's input devices. Usually in /dev/input/. This arg accepts multiple values: -d /dev/input/event*")
+                .multiple(true)
                 .takes_value(true)
                 .required(true),
         )
@@ -112,7 +113,9 @@ fn cli_init() -> Result<KtrlArgs, std::io::Error> {
     let config_path = Path::new(matches.value_of("cfg").unwrap_or(DEFAULT_CFG_PATH));
     let log_path = Path::new(matches.value_of("logfile").unwrap_or(DEFAULT_LOG_PATH));
     let assets_path = Path::new(matches.value_of("assets").unwrap_or(DEFAULT_ASSETS_PATH));
-    let kbd_path = Path::new(matches.value_of("device").unwrap());
+    let kbd_paths = matches.values_of("device").unwrap()
+        .map(|p| PathBuf::from(p))
+        .collect::<Vec<PathBuf>>();
     let ipc_port = matches
         .value_of("ipc_port")
         .unwrap_or(DEFAULT_IPC_PORT)
@@ -148,16 +151,18 @@ fn cli_init() -> Result<KtrlArgs, std::io::Error> {
         return Err(Error::new(NotFound, err));
     }
 
-    if !kbd_path.exists() {
-        let err = format!(
-            "Could not find the keyboard device ({})",
-            kbd_path.to_str().unwrap_or("?")
-        );
-        return Err(Error::new(NotFound, err));
+    for kbd_path in &kbd_paths {
+        if !kbd_path.exists() {
+            let err = format!(
+                "Could not find the keyboard device ({})",
+                kbd_path.to_str().unwrap_or("?")
+            );
+            return Err(Error::new(NotFound, err));
+        }
     }
 
     Ok(KtrlArgs {
-        kbd_path: kbd_path.to_path_buf(),
+        kbd_path: kbd_paths,
         config_path: config_path.to_path_buf(),
         assets_path: assets_path.to_path_buf(),
         ipc_port,

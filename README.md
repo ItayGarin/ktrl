@@ -181,6 +181,15 @@ H: Handlers=sysrq kbd event25 leds
 ```
 Notice in `Handlers`, it tells us the event # we need. So our path to our device is `/dev/input/event25`.
 
+#### Listening on all input devices
+
+If you still can not figure out which device to use, or want to map events from
+several devices, you can pass all (or chosen) devices as an arg:
+```
+--device /dev/input/event*
+# or
+--device /dev/input/event2 /dev/input/event10
+```
 
 #### Setting up ktrl as a Service (Optional)
 
@@ -305,6 +314,14 @@ KEY_D:  TapHold(Key(KEY_D), Key(KEY_LEFTALT)),
 ```
 
 This will make `A`, `S` and `D` act as usual on taps and as modifiers when held.
+
+### Remap mouse button to control musical player
+
+If you have a mouse with a side buttons, you can remap a button to act as a media button.
+This example shows how to map tap to play/pause and long tap to next song:
+```
+BTN_SIDE: TapHold(Key(KEY_PLAYPAUSE), Key(KEY_NEXTSONG))
+```
 
 ##  Limitations
 

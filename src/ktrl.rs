@@ -24,7 +24,7 @@ use crate::KbdOut;
 use crate::effects::Dj;
 
 pub struct KtrlArgs {
-    pub kbd_path: PathBuf,
+    pub kbd_path: Vec<PathBuf>,
     pub config_path: PathBuf,
     pub assets_path: PathBuf,
     pub ipc_port: usize,
@@ -33,7 +33,7 @@ pub struct KtrlArgs {
 }
 
 pub struct Ktrl {
-    pub kbd_in_path: PathBuf,
+    pub kbd_in_path: Vec<PathBuf>,
     pub kbd_out: KbdOut,
     pub l_mgr: LayersManager,
     pub th_mgr: TapHoldMgr,
@@ -139,28 +139,48 @@ impl Ktrl {
     pub fn event_loop(ktrl: Arc<Mutex<Self>>) -> Result<(), std::io::Error> {
         info!("Ktrl: Entering the event loop");
 
-        let kbd_in_path: PathBuf;
+        let kbd_in_paths: Vec<PathBuf>;
         {
             let ktrl = ktrl.lock().expect("Failed to lock ktrl (poisoned)");
-            kbd_in_path = ktrl.kbd_in_path.clone();
+            kbd_in_paths = ktrl.kbd_in_path.clone();
         }
 
-        let kbd_in = match KbdIn::new(&kbd_in_path) {
+        let threads = kbd_in_paths.iter().map(|kbd_in_path| {
+            let ktrl = ktrl.clone();
+            let kbd_in_path = kbd_in_path.clone();
+            std::thread::spawn(move || {
+                Self::event_loop_for_path(ktrl, kbd_in_path)
+            })
+        }).collect::<Vec<_>>();
+
+        let mut res = Ok(());
+        for thread in threads {
+            if let Err(err) = thread.join().unwrap() {
+                res = Err(err);
+            }
+        }
+
+        res
+    }
+
+    fn event_loop_for_path(ktrl: Arc<Mutex<Self>>, kbd_path: PathBuf) -> Result<(), std::io::Error> {
+        let kbd_in = match KbdIn::new(&kbd_path) {
             Ok(kbd_in) => kbd_in,
             Err(err) => {
-                error!("Failed to open the input keyboard device. Make sure you've added ktrl to the `input` group");
+                error!("Failed to open the input keyboard device: {err}. Make sure you've added ktrl to the `input` group");
                 return Err(err);
             }
         };
-
         loop {
             let in_event = kbd_in.read()?;
+            // TODO maybe use channel instead of locking for each event?
             let mut ktrl = ktrl.lock().expect("Failed to lock ktrl (poisoned)");
-
-            // Filter uninteresting events
-            if in_event.event_type == EventType::EV_SYN || in_event.event_type == EventType::EV_MSC
-            {
-                continue;
+            if !(
+                in_event.event_type == EventType::EV_SYN
+                || in_event.event_type == EventType::EV_MSC
+                || in_event.event_type == EventType::EV_REL
+            ) {
+                log::debug!("event {:?}", in_event);
             }
 
             // Pass-through non-key events
