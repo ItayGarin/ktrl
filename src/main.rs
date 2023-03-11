@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 mod actions;
 mod cfg;
+mod devices;
 mod effects;
 mod kbd_in;
 mod kbd_out;
@@ -44,7 +45,12 @@ fn cli_init() -> Result<KtrlArgs, std::io::Error> {
                 .help("Path to your keyboard's input devices. Usually in /dev/input/. This arg accepts multiple values: -d /dev/input/event*")
                 .multiple(true)
                 .takes_value(true)
-                .required(true),
+        )
+        .arg(
+            Arg::with_name("watch")
+            .short("w")
+            .long("watch")
+            .help("Watch for new devices in /dev/input")
         )
         .arg(
             Arg::with_name("cfg")
@@ -110,24 +116,7 @@ fn cli_init() -> Result<KtrlArgs, std::io::Error> {
         )
         .get_matches();
 
-    let config_path = Path::new(matches.value_of("cfg").unwrap_or(DEFAULT_CFG_PATH));
     let log_path = Path::new(matches.value_of("logfile").unwrap_or(DEFAULT_LOG_PATH));
-    let assets_path = Path::new(matches.value_of("assets").unwrap_or(DEFAULT_ASSETS_PATH));
-    let kbd_paths = matches.values_of("device").unwrap()
-        .map(|p| PathBuf::from(p))
-        .collect::<Vec<PathBuf>>();
-    let ipc_port = matches
-        .value_of("ipc_port")
-        .unwrap_or(DEFAULT_IPC_PORT)
-        .parse::<usize>()
-        .expect("Bad ipc port value");
-    let ipc_msg = matches.value_of("msg").map(|x: &str| x.to_string());
-    let notify_port = matches
-        .value_of("notify_port")
-        .unwrap_or(DEFAULT_NOTIFY_PORT)
-        .parse::<usize>()
-        .expect("Bad notify port value");
-
     let log_lvl = match matches.is_present("debug") {
         true => LevelFilter::Debug,
         _ => LevelFilter::Info,
@@ -142,6 +131,26 @@ fn cli_init() -> Result<KtrlArgs, std::io::Error> {
         ),
     ])
     .expect("Couldn't initialize the logger");
+
+    let config_path = Path::new(matches.value_of("cfg").unwrap_or(DEFAULT_CFG_PATH));
+    let assets_path = Path::new(matches.value_of("assets").unwrap_or(DEFAULT_ASSETS_PATH));
+    let kbd_paths = matches
+        .values_of("device")
+        .unwrap_or_default()
+        .map(PathBuf::from)
+        .collect::<Vec<PathBuf>>();
+    let watch = matches.is_present("watch");
+    let ipc_port = matches
+        .value_of("ipc_port")
+        .unwrap_or(DEFAULT_IPC_PORT)
+        .parse::<usize>()
+        .expect("Bad ipc port value");
+    let ipc_msg = matches.value_of("msg").map(|x: &str| x.to_string());
+    let notify_port = matches
+        .value_of("notify_port")
+        .unwrap_or(DEFAULT_NOTIFY_PORT)
+        .parse::<usize>()
+        .expect("Bad notify port value");
 
     if !config_path.exists() {
         let err = format!(
@@ -163,6 +172,7 @@ fn cli_init() -> Result<KtrlArgs, std::io::Error> {
 
     Ok(KtrlArgs {
         kbd_path: kbd_paths,
+        watch: watch,
         config_path: config_path.to_path_buf(),
         assets_path: assets_path.to_path_buf(),
         ipc_port,
@@ -193,8 +203,12 @@ fn main_impl(args: KtrlArgs) -> Result<(), std::io::Error> {
 
 #[cfg(not(feature = "ipc"))]
 fn main_impl(args: KtrlArgs) -> Result<(), std::io::Error> {
+    let watch = args.watch;
     let ktrl_arc = Ktrl::new_arc(args)?;
     info!("ktrl: Setup Complete");
+    if watch {
+        Ktrl::watch_loop(ktrl_arc.clone());
+    }
     Ktrl::event_loop(ktrl_arc)?;
     Ok(())
 }

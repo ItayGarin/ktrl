@@ -158,7 +158,14 @@ sudo chmod -R 0770 /opt/ktrl
 
 #### Locating your Keyboard's input device
 
-For ktrl to work, you have to supply it with a path to your keyboard's input device.
+#### The easy and obvious way
+If you want ktrl to process events from all input devices, just run it without arguments.
+If you also want ktrl to watch for new devices in `/dev/input`, you can pass `--watch` as an argument.
+This could be useful if you use bluetooth devices that connect and reconnect all the time.
+
+#### Specifying devices manually
+
+If you want to process events only from selected devices, you have to supply it with a path to your keyboard's input device.
 Input devices reside in the `/dev/input` directory.
 
 Linux provides two convenient symlinks-filled directories to make the search process easier.
@@ -166,6 +173,8 @@ These directories are `/dev/input/by-id` and `/dev/input/by-path`.
 
 Within these two directories keyboard devices usually have a `-kbd` suffix.
 For example, in my laptop, the path is `/dev/input/by-path/platform-i8042-serio-0-event-kbd`.
+
+If you provide both `--watch` and `--device` arguments, then ktrl will watch for file events only on those devices.
 
 ##### Bluetooth keyboard location
 
